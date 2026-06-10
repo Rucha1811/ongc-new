@@ -1,0 +1,4 @@
+.venv/
+__pycache__/
+*.pyc
+ongc-portal/backend/app/ai/models/
