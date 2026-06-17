@@ -9,7 +9,7 @@ SUPPORTED_EXTENSIONS = {".pdf", ".docx", ".xlsx", ".csv", ".pptx", ".txt"}
 def parse_file(file_path: str) -> Tuple[str, List[dict]]:
     ext = os.path.splitext(file_path)[1].lower()
     if ext == ".pdf":
-        return parse_pdf_marker(file_path)
+        return parse_pdf_pypdf2(file_path)
     elif ext == ".docx":
         return parse_docx(file_path)
     elif ext == ".xlsx":

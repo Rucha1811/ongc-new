@@ -35,6 +35,17 @@ async def startup():
     except Exception as e:
         print(f"[startup] DB/pgvector: {e}")
 
+    # Pre-load embedding model so first upload/search isn't slow
+    try:
+        import time
+        t0 = time.time()
+        print("[startup] Loading embedding model...")
+        from app.utils.embeddings import get_model
+        get_model()
+        print(f"[startup] Model loaded in {time.time()-t0:.1f}s")
+    except Exception as e:
+        print(f"[startup] Model load error (will load on demand): {e}")
+
 @app.get("/")
 def root():
     return {"msg": "Data Vision API running."}
