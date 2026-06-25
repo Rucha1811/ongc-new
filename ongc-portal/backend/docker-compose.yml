@@ -14,14 +14,18 @@ services:
   api:
     build: .
     command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
-    volumes:
-      - .:/app
     ports:
       - "8000:8000"
     depends_on:
       - db
     environment:
+      - POSTGRES_SERVER=db
+      - UPLOAD_DIR=/app/uploads
       - LLM_API_URL=http://host.docker.internal:11434
+      - REDIS_URL=redis://redis:6379/0
+    volumes:
+      - .:/app
+      - uploads_data:/app/uploads
 
   pgadmin:
     image: dpage/pgadmin4:latest
@@ -36,3 +40,4 @@ services:
 
 volumes:
   db_data:
+  uploads_data:

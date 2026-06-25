@@ -1,4 +1,4 @@
-"""Migrate existing file_path values to new category/classification folder structure.
+"""Migrate existing file_path values to new project/section/classification folder structure.
 Run: python3 migrate_file_paths.py  (from backend/ directory)
 """
 import asyncio
@@ -20,7 +20,7 @@ AsyncSessionLocal = sessionmaker(engine, class_=AsyncSession, expire_on_commit=F
 
 def sanitize(name: str) -> str:
     if not name:
-        return None
+        return ""
     safe = name.replace("/", "_").replace(" ", "_")
     while "__" in safe:
         safe = safe.replace("__", "_")
@@ -28,25 +28,24 @@ def sanitize(name: str) -> str:
 
 async def migrate():
     async with AsyncSessionLocal() as db:
-        result = await db.execute(text("SELECT id, file_name, category, classification, file_path, file_data FROM files"))
+        result = await db.execute(text("SELECT id, file_name, project_name, section, classification, file_path, file_data FROM files"))
         rows = result.fetchall()
         upload_dir = settings.UPLOAD_DIR
         print(f"Migrating {len(rows)} files...")
 
         for r in rows:
-            fid, fname, cat, cls, old_path, fdata = r
-            cat_safe = sanitize(cat) or "Uncategorized"
+            fid, fname, proj, sec, cls, old_path, fdata = r
+            proj_safe = sanitize(proj) or "Uncategorized"
+            sec_safe = sanitize(sec) or "General"
             cls_safe = sanitize(cls) or "Unclassified"
-            # Keep original filename from old path if available
             old_basename = os.path.basename(old_path) if old_path else fname
-            new_folder = os.path.join(upload_dir, cat_safe, cls_safe)
+            new_folder = os.path.join(upload_dir, proj_safe, sec_safe, cls_safe)
             new_path = os.path.join(new_folder, old_basename)
 
             if old_path and old_path == new_path:
                 print(f"  ID {fid}: Already correct → {new_path}")
                 continue
 
-            # Move physical file if it exists
             if old_path and os.path.exists(old_path):
                 os.makedirs(new_folder, exist_ok=True)
                 if os.path.normpath(old_path) != os.path.normpath(new_path):
@@ -57,7 +56,6 @@ async def migrate():
             elif old_path:
                 print(f"  ID {fid}: No file on disk at {old_path}, just updating DB path")
 
-            # Update DB
             await db.execute(
                 text("UPDATE files SET file_path = :path WHERE id = :id"),
                 {"path": new_path, "id": fid}
@@ -67,10 +65,9 @@ async def migrate():
         await db.commit()
         print("\nMigration complete!")
 
-        # Verify
         print("\nVerifying...")
-        vr = await db.execute(text("SELECT id, file_name, category, classification, file_path FROM files ORDER BY id"))
+        vr = await db.execute(text("SELECT id, file_name, project_name, section, classification, file_path FROM files ORDER BY id"))
         for v in vr.fetchall():
-            print(f"  ID {v[0]:>3}  {v[1]:<30}  Cat:{v[2] or '':<20}  Class:{v[3] or '':<30}  Path:{v[4]}")
+            print(f"  ID {v[0]:>3}  {v[1]:<30}  Proj:{v[2] or '':<20}  Sec:{v[3] or '':<15}  Class:{v[4] or '':<30}  Path:{v[5]}")
 
 asyncio.run(migrate())

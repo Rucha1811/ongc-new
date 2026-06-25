@@ -5,7 +5,7 @@ from sqlalchemy.future import select
 from sqlalchemy.orm import selectinload
 from sqlalchemy import or_, and_
 from app.database import get_db
-from app.models.base import File, User, UserPermission
+from app.models.base import File, User, UserPermission, Role
 from app.auth.deps import get_current_user
 from app.activity_utils import log_activity
 from app.utils.pdf_extract import extract_text_from_pdf
@@ -54,17 +54,22 @@ async def _filter_files_area(files: list, user, accessible: set, db: AsyncSessio
         )
         managed_user_ids = {row[0] for row in mu_res.all()}
 
-        # Managed areas from those users
+        # Managed areas + sections from those users
         ma_res = await db.execute(
-            select(User.area).where(
+            select(User.area, User.section).where(
                 User.ops_manager_id == user.id,
-                User.area.isnot(None),
-                User.area != "",
             )
         )
-        managed_areas = {row[0] for row in ma_res.all()}
+        managed_areas = set()
+        for area, section in ma_res.all():
+            if area:
+                managed_areas.add(area)
+            if section:
+                managed_areas.add(section)
         if user.area:
             managed_areas.add(user.area)
+        if user.section:
+            managed_areas.add(user.section)
 
         for f in files:
             if f.uploaded_by == user.id:
@@ -79,18 +84,14 @@ async def _filter_files_area(files: list, user, accessible: set, db: AsyncSessio
         return [file_to_dict(f) for f in result]
 
     # Data Creator / Viewer / other non-admin
-    # Match by area OR category (if either is set), otherwise all files visible
     for f in files:
         if f.uploaded_by == user.id:
             result.append(f)
             continue
 
-        # Check if file matches user's area OR category (whichever is set)
-        matches_area = not user.area or f.section == user.area
+        matches_area = (user.area and f.section == user.area) or (user.section and f.section == user.section)
         matches_category = not user.user_category or f.category == user.user_category
-
-        # If user has area/category set, require at least one match
-        has_filter = user.area or user.user_category
+        has_filter = user.area or user.section or user.user_category
         if has_filter and not (matches_area or matches_category):
             continue
 
@@ -114,15 +115,21 @@ ALL_CLASSIFICATIONS = [
     "Highly_Confidential_Restricted",
 ]
 
-def build_file_path(upload_dir: str, category: str, classification: str, filename: str) -> str:
-    """Build nested path: uploads/{category}/{classification}/{filename}
-    Pre-creates all 4 classification subfolders under the category folder."""
-    cat_dir = sanitize_folder_name(category)
+def build_file_path(upload_dir: str, category: str, classification: str, filename: str,
+                    project_name: str = None, section: str = None) -> str:
+    """Build nested path: uploads/{project}/{section}/{classification}/{filename}
+    Falls back to:
+      project_name=None, section=None → uploads/Uncategorized/{classification}/
+      project_name set,   section=None → uploads/{project}/General/{classification}/
+      project_name=None,  section set  → uploads/Uncategorized/{section}/{classification}/
+    Pre-creates all 4 classification subfolders under the leaf directory."""
+    proj_dir = sanitize_folder_name(project_name) if project_name else "Uncategorized"
+    sec_dir = sanitize_folder_name(section) if section else "General"
     cls_dir = sanitize_folder_name(classification) if classification else "Unclassified"
-    # Pre-create all classification folders under this category
+    leaf_dir = os.path.join(upload_dir, proj_dir, sec_dir)
     for cls in ALL_CLASSIFICATIONS + ["Unclassified"]:
-        os.makedirs(os.path.join(upload_dir, cat_dir, cls), exist_ok=True)
-    return os.path.join(upload_dir, cat_dir, cls_dir, filename)
+        os.makedirs(os.path.join(leaf_dir, cls), exist_ok=True)
+    return os.path.join(leaf_dir, cls_dir, filename)
 
 def _is_seed_data(f: File) -> bool:
     return f.file_path and "seed_" in f.file_path
@@ -162,6 +169,7 @@ def _extract_snippet(text: str | None, term: str, context: int = 60) -> str | No
 
 
 def file_to_dict(f: File) -> dict:
+    role_name = f.uploader.role.name if f.uploader and f.uploader.role else None
     return {
         "id": f.id,
         "file_name": f.file_name,
@@ -176,13 +184,17 @@ def file_to_dict(f: File) -> dict:
         "ml_block": f.ml_block,
         "location": f.location,
         "classification": f.classification,
+        "contractor_name": f.contractor_name,
         "status": f.status,
         "uploaded_by": f.uploaded_by,
         "uploaded_by_name": f.uploader.name if f.uploader else str(f.uploaded_by),
+        "uploaded_by_role": role_name,
         "upload_date": f.upload_date.isoformat() if f.upload_date else None,
         "file_size": f.file_size,
         "file_path": f.file_path,
         "summary": f.summary,
+        "doc_type": f.doc_type,
+        "description": f.description,
         "created_at": f.created_at.isoformat() if f.created_at else None,
         "updated_at": f.updated_at.isoformat() if f.updated_at else None,
     }
@@ -218,62 +230,100 @@ async def upload_file(
     ml_block: str = Form(None),
     location: str = Form(None),
     classification: str = Form(None),
+    contractor_name: str = Form(None),
     file_size: str = Form(None),
+    doc_type: str = Form(None),
+    description: str = Form(None),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
     background_tasks: BackgroundTasks = None
 ):
+    role_name = current_user.role.name if current_user.role else "viewer"
+    if role_name not in ("admin", "ops_manager", "data_creator"):
+        raise HTTPException(status_code=403, detail="You do not have permission to upload files")
     allowed_ext = {"pdf","docx","xlsx","ppt","pptx","txt","dat","csv","zip"}
     ext = file.filename.split(".")[-1].lower() if "." in file.filename else ""
     if ext not in allowed_ext:
         raise HTTPException(status_code=400, detail=f"File type '.{ext}' not allowed")
 
+    MAX_SIZE = 1_073_741_824  # 1 GB
     contents = await file.read()
+    if len(contents) > MAX_SIZE:
+        raise HTTPException(status_code=413, detail="File exceeds maximum allowed size of 1 GB")
     orig_filename = file.filename.replace(" ", "_")
-    file_path = build_file_path(settings.UPLOAD_DIR, category, classification, orig_filename)
+    file_path = build_file_path(settings.UPLOAD_DIR, category, classification, orig_filename,
+                                 project_name=project_name, section=section)
     os.makedirs(os.path.dirname(file_path), exist_ok=True)
-    with open(file_path, "wb") as fh:
-        fh.write(contents)
+    try:
+        with open(file_path, "wb") as fh:
+            fh.write(contents)
 
-    search_text = None
-    embedding = None
-    summary = None
-    if ext == "pdf":
-        search_text = extract_text_from_pdf(contents)
-        if not search_text or len(search_text.strip()) < 50:
-            from app.utils.ocr import ocr_pdf
-            ocr_text = ocr_pdf(contents)
-            if ocr_text:
-                search_text = ocr_text
-        if search_text and search_text.strip():
-            embedding = generate_embedding(search_text)
+        search_text = None
+        embedding = None
+        summary = None
+        if ext == "pdf":
+            search_text = extract_text_from_pdf(contents)
+            if not search_text or len(search_text.strip()) < 50:
+                from app.utils.ocr import ocr_pdf
+                ocr_text = ocr_pdf(contents)
+                if ocr_text:
+                    search_text = ocr_text
+            if search_text and search_text.strip():
+                embedding = generate_embedding(search_text)
 
-    db_file = File(
-        file_name=file_name or orig_filename,
-        file_type=file_type.upper(),
-        project_name=project_name,
-        sig_number=sig_number,
-        data_type=data_type,
-        section=section,
-        category=category,
-        season=season,
-        block=block,
-        ml_block=ml_block,
-        location=location,
-        classification=classification,
-        status="Pending",
-        uploaded_by=current_user.id,
-        upload_date=datetime.utcnow(),
-        file_size=file_size or f"{len(contents)/1024/1024:.2f} MB",
-        file_path=file_path,
-        file_data=contents,
-        search_text=search_text,
-        summary=summary,
-        embedding=embedding,
-    )
-    db.add(db_file)
-    await db.commit()
-    await db.refresh(db_file)
+        auto_approved = current_user.role.name == "admin"
+        db_file = File(
+            file_name=file_name or orig_filename,
+            file_type=file_type.upper(),
+            project_name=project_name,
+            sig_number=sig_number,
+            data_type=data_type,
+            section=section,
+            category=category,
+            season=season,
+            block=block,
+            ml_block=ml_block,
+            location=location,
+            classification=classification,
+            contractor_name=contractor_name,
+            status="Approved" if auto_approved else "Pending",
+            uploaded_by=current_user.id,
+            upload_date=datetime.utcnow(),
+            file_size=file_size or f"{len(contents)/1024/1024:.2f} MB",
+            file_path=file_path,
+            doc_type=doc_type,
+            description=description,
+            search_text=search_text,
+            summary=summary,
+            embedding=embedding,
+        )
+        db.add(db_file)
+        await db.commit()
+        await db.refresh(db_file)
+    except Exception:
+        # Clean up orphaned file on disk if DB insert fails
+        if os.path.exists(file_path):
+            os.remove(file_path)
+        raise
+
+    from app.models.base import Approval, Notification, SectionConfig
+
+    if auto_approved:
+        approval = Approval(file_id=db_file.id, action="approved", action_by=current_user.id, action_at=datetime.utcnow(), comment="Auto-approved (admin upload)")
+        db.add(approval)
+    else:
+        # Notify admins and section ops_manager about pending file
+        admin_result = await db.execute(select(User).join(User.role).where(Role.name == "admin"))
+        admins = admin_result.scalars().all()
+        notif_msg = f'New file "{file_name}" uploaded by {current_user.name} in {section or "N/A"} — pending approval.'
+        for admin in admins:
+            db.add(Notification(user_id=admin.id, message=notif_msg, is_read=False))
+        # Also notify section-specific ops_manager if configured
+        if section:
+            sc_result = await db.execute(select(SectionConfig).where(SectionConfig.section == section))
+            sc = sc_result.scalar_one_or_none()
+            if sc and sc.ops_manager_id and sc.ops_manager_id != current_user.id:
+                db.add(Notification(user_id=sc.ops_manager_id, message=notif_msg, is_read=False))
 
     if search_text and search_text.strip() and background_tasks:
         background_tasks.add_task(_generate_summary_bg, db_file.id, search_text)
@@ -283,7 +333,9 @@ async def upload_file(
 
     # Load uploader for response
     result = await db.execute(
-        select(File).where(File.id == db_file.id).options(selectinload(File.uploader))
+        select(File).where(File.id == db_file.id).options(
+            selectinload(File.uploader).selectinload(User.role)
+        )
     )
     db_file = result.scalar_one()
     return file_to_dict(db_file)
@@ -291,6 +343,7 @@ async def upload_file(
 
 @router.get("/")
 async def list_files(
+    section: str = None,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
@@ -301,9 +354,13 @@ async def list_files(
     user_perms = perm_res.scalars().all()
     accessible = get_accessible_classifications(current_user.role.name, user_perms)
 
-    result = await db.execute(
-        select(File).options(selectinload(File.uploader))
+    query = select(File).options(
+        selectinload(File.uploader).selectinload(User.role)
     )
+    if section:
+        query = query.where(File.section == section)
+
+    result = await db.execute(query)
     all_files = result.scalars().all()
 
     if current_user.role.name == "admin":
@@ -707,6 +764,47 @@ loadPDF().catch(function(e) {{ showError('Error: ' + e.message); }});
     return HTMLResponse(content=html)
 
 
+@router.post("/parse-excel")
+async def parse_excel(
+    file: UploadFile = FastAPIFile(...),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Upload an Excel file and return its metadata (sheet names, columns, sample rows)."""
+    if not file.filename.lower().endswith((".xlsx", ".xls", ".csv")):
+        raise HTTPException(status_code=400, detail="Only Excel files (.xlsx, .xls, .csv) are supported")
+    import io
+    import csv
+    contents = await file.read()
+    result = {"sheets": [], "total_rows": 0, "columns": [], "sample_data": []}
+    if file.filename.endswith(".csv"):
+        text = contents.decode("utf-8-sig", errors="replace")
+        reader = csv.reader(io.StringIO(text))
+        rows = list(reader)
+        if rows:
+            result["columns"] = rows[0]
+            result["total_rows"] = len(rows) - 1
+            result["sample_data"] = rows[1:6]
+        result["sheets"] = [{"name": file.filename, "rows": result["total_rows"], "columns": result["columns"]}]
+    else:
+        try:
+            import openpyxl
+            wb = openpyxl.load_workbook(io.BytesIO(contents), read_only=True, data_only=True)
+            for ws_name in wb.sheetnames:
+                ws = wb[ws_name]
+                rows = list(ws.iter_rows(values_only=True))
+                sheet_data = {"name": ws_name, "rows": max(0, len(rows) - 1), "columns": list(rows[0]) if rows else []}
+                result["sheets"].append(sheet_data)
+                if not result["columns"] and rows:
+                    result["columns"] = list(rows[0])
+                    result["sample_data"] = [list(r) for r in rows[1:6] if any(v is not None for v in r)]
+                    result["total_rows"] += max(0, len(rows) - 1)
+            wb.close()
+        except ImportError:
+            raise HTTPException(status_code=500, detail="openpyxl not installed. Install with: pip install openpyxl")
+    return result
+
+
 @router.get("/search")
 async def search_files(
     search: str = None,
@@ -717,6 +815,7 @@ async def search_files(
     season: str = None,
     block: str = None,
     classification: str = None,
+    project_name: str = None,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
@@ -727,7 +826,9 @@ async def search_files(
     user_perms = perm_res.scalars().all()
     accessible = get_accessible_classifications(current_user.role.name, user_perms)
 
-    query = select(File).options(selectinload(File.uploader))
+    query = select(File).options(
+        selectinload(File.uploader).selectinload(User.role)
+    )
     filters = []
 
     search_filter = None
@@ -756,6 +857,8 @@ async def search_files(
         filters.append(File.block == block)
     if classification:
         filters.append(File.classification == classification)
+    if project_name:
+        filters.append(File.project_name == project_name)
 
     if filters:
         query = query.where(and_(*filters))
@@ -793,7 +896,9 @@ async def search_files(
                 vec_ids = {row[0] for row in vec_result.all()}
 
                 if vec_ids:
-                    vec_files_query = select(File).options(selectinload(File.uploader)).where(
+                    vec_files_query = select(File).options(
+                        selectinload(File.uploader).selectinload(User.role)
+                    ).where(
                         File.id.in_(vec_ids)
                     )
                     non_search_filters = [f for f in filters if f is not search_filter]
@@ -823,3 +928,25 @@ async def search_files(
             pass
 
     return keyword_results
+
+
+@router.patch("/{file_id}")
+async def update_file(
+    file_id: int,
+    data: dict,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    role_name = user.role.name if user.role else ""
+    if role_name not in ("admin", "ops_manager"):
+        raise HTTPException(status_code=403, detail="Only admin/ops_manager can update file metadata")
+    result = await db.execute(select(File).where(File.id == file_id))
+    f = result.scalar_one_or_none()
+    if not f:
+        raise HTTPException(404, "File not found")
+    allowed_fields = {"file_type", "data_type", "category", "classification", "project_name", "section", "season", "block", "ml_block", "location", "contractor_name"}
+    for key, val in data.items():
+        if key in allowed_fields:
+            setattr(f, key, val)
+    await db.commit()
+    return {"msg": "File updated", "file_id": file_id}

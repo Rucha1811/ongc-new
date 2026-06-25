@@ -17,10 +17,13 @@ def sanitize_folder_name(name: str) -> str:
         safe = safe.replace("__", "_")
     return safe.strip("_")
 
-def build_file_path(upload_dir: str, category: str, classification: str, filename: str) -> str:
-    cat_dir = sanitize_folder_name(category) if category else "Uncategorized"
+def build_file_path(upload_dir: str, category: str, classification: str, filename: str,
+                    project_name: str = None, section: str = None) -> str:
+    """Build nested path: uploads/{project}/{section}/{classification}/{filename}"""
+    proj_dir = sanitize_folder_name(project_name) if project_name else "Uncategorized"
+    sec_dir = sanitize_folder_name(section) if section else "General"
     cls_dir = sanitize_folder_name(classification) if classification else "Unclassified"
-    folder = os.path.join(upload_dir, cat_dir, cls_dir)
+    folder = os.path.join(upload_dir, proj_dir, sec_dir, cls_dir)
     os.makedirs(folder, exist_ok=True)
     return os.path.join(folder, filename)
 

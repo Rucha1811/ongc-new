@@ -79,3 +79,64 @@ class Approval(ApprovalBase):
     action_at: Optional[datetime]
     class Config:
         orm_mode = True
+
+class ProjectEventSchema(BaseModel):
+    event_date: str
+    description: str
+
+class ProjectCreate(BaseModel):
+    project_name: str
+    number: Optional[str] = None
+    survey_type: Optional[str] = None
+    contractor_name: Optional[str] = None
+    area_name: Optional[str] = None
+    section: Optional[str] = None
+    party_chief: Optional[str] = None
+    year_field_season: Optional[str] = None
+    start_date: Optional[str] = None
+    end_date: Optional[str] = None
+    project_period: Optional[str] = None
+    target_vs_achievement: Optional[str] = None
+    survey_objective: Optional[str] = None
+    xy_coordinates: Optional[str] = None
+    survey_grid_params: Optional[str] = None
+    acquisition_geometry: Optional[str] = None
+    instrument_parameters: Optional[str] = None
+    sensor_type: Optional[str] = None
+    source_parameters: Optional[str] = None
+    total_cost: Optional[float] = None
+    per_unit_cost: Optional[float] = None
+    project_highlights: Optional[str] = None
+    events: Optional[list[ProjectEventSchema]] = None
+
+class ProjectOut(BaseModel):
+    id: int
+    project_name: str
+    number: Optional[str] = None
+    survey_type: Optional[str] = None
+    contractor_name: Optional[str] = None
+    area_name: Optional[str] = None
+    section: Optional[str] = None
+    party_chief: Optional[str] = None
+    year_field_season: Optional[str] = None
+    start_date: Optional[str] = None
+    end_date: Optional[str] = None
+    project_period: Optional[str] = None
+    target_vs_achievement: Optional[str] = None
+    survey_objective: Optional[str] = None
+    xy_coordinates: Optional[str] = None
+    survey_grid_params: Optional[str] = None
+    acquisition_geometry: Optional[str] = None
+    instrument_parameters: Optional[str] = None
+    sensor_type: Optional[str] = None
+    source_parameters: Optional[str] = None
+    total_cost: Optional[float] = None
+    per_unit_cost: Optional[float] = None
+    project_highlights: Optional[str] = None
+    status: Optional[str] = "Active"
+    created_by: Optional[int] = None
+    created_at: Optional[str] = None
+    updated_at: Optional[str] = None
+    events: Optional[list[ProjectEventSchema]] = None
+    class Config:
+        orm_mode = True

@@ -6,15 +6,22 @@ const COLORS = ["#0b3d91","#1B5E20","#E65100","#B71C1C","#7B1FA2","#00695C","#15
 export default function ActivityAnalytics({ user }) {
   const [period, setPeriod] = useState("week");
   const [data, setData] = useState(null);
+  const [targets, setTargets] = useState([]);
   const [loading, setLoading] = useState(true);
   const [exporting, setExporting] = useState(false);
 
   useEffect(() => {
     setLoading(true);
-    api.activitySummary(period)
-      .then(setData)
-      .catch(() => setData(null))
-      .finally(() => setLoading(false));
+    Promise.all([
+      api.activitySummary(period),
+      api.listTargets(),
+    ]).then(([d, t]) => {
+      setData(d);
+      setTargets(t || []);
+    }).catch(() => {
+      setData(null);
+      setTargets([]);
+    }).finally(() => setLoading(false));
   }, [period]);
 
   const handleExport = async () => {
@@ -35,7 +42,7 @@ export default function ActivityAnalytics({ user }) {
   return (
     <div>
       <div style={{ fontSize:18, fontWeight:700, color:"#0b3d91", marginBottom:16, display:"flex", alignItems:"center", gap:8, padding:"0 0 4px 0", borderBottom:"2px solid #e8edf2" }}>
-        📊 Work Analytics
+        Work Analytics
         <span style={{ fontSize:12, color:"#5a6a7a", fontWeight:400, marginLeft:8 }}>Last {period === "week" ? "7 days" : "30 days"}</span>
       </div>
 
@@ -72,10 +79,37 @@ export default function ActivityAnalytics({ user }) {
         ))}
       </div>
 
+      {targets.length > 0 && (
+        <div style={{ background:"#fff", borderRadius:8, boxShadow:"0 1px 4px rgba(0,0,0,0.06)", padding:16, marginBottom:16 }}>
+          <div style={{ fontSize:14, fontWeight:700, color:"#0b3d91", marginBottom:14 }}>Goal vs Accomplishment</div>
+          {targets.map(t => {
+            const maxVal = Math.max(Number(t.target_value) || 1, Number(t.achieved) || 1);
+            const goalH = (Number(t.target_value) / maxVal) * 100;
+            const achH = (Number(t.achieved) / maxVal) * 100;
+            return (
+              <div key={t.id} style={{ marginBottom:16, display:"flex", alignItems:"center", gap:16 }}>
+                <div style={{ minWidth:120, flexShrink:0 }}>
+                  <div style={{ fontSize:12, fontWeight:600, color:"#333" }}>{t.title}</div>
+                  {t.section && <div style={{ fontSize:10, color:"#888" }}>{t.section}</div>}
+                </div>
+                <svg width={80} height={120} viewBox="0 0 80 120">
+                  <text x={18} y={115} textAnchor="middle" fontSize={9} fill="#c62828">Goal</text>
+                  <text x={62} y={115} textAnchor="middle" fontSize={9} fill="#1B5E20">Done</text>
+                  <rect x={8} y={110 - goalH} width={20} height={goalH} fill="#c62828" rx={3} />
+                  <rect x={52} y={110 - achH} width={20} height={achH} fill="#1B5E20" rx={3} />
+                  <text x={18} y={110 - goalH - 3} textAnchor="middle" fontSize={8} fontWeight={700} fill="#c62828">{t.target_value}</text>
+                  <text x={62} y={110 - achH - 3} textAnchor="middle" fontSize={8} fontWeight={700} fill="#1B5E20">{t.achieved}</text>
+                </svg>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
       <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:16, marginBottom:16 }}>
         {/* Approvals by Section */}
         <div style={{ background:"#fff", borderRadius:8, boxShadow:"0 1px 4px rgba(0,0,0,0.06)", padding:16 }}>
-          <div style={{ fontSize:14, fontWeight:700, color:"#0b3d91", marginBottom:12 }}>✅ Approvals by Section</div>
+          <div style={{ fontSize:14, fontWeight:700, color:"#0b3d91", marginBottom:12 }}>Approvals by Section</div>
           {Object.keys(data.approvalsBySection || {}).length === 0 ? (
             <div style={{ color:"#aaa", textAlign:"center", padding:24 }}>No approvals in this period.</div>
           ) : (
@@ -95,7 +129,7 @@ export default function ActivityAnalytics({ user }) {
 
         {/* Approvals by Classification */}
         <div style={{ background:"#fff", borderRadius:8, boxShadow:"0 1px 4px rgba(0,0,0,0.06)", padding:16 }}>
-          <div style={{ fontSize:14, fontWeight:700, color:"#0b3d91", marginBottom:12 }}>✅ Approvals by Classification</div>
+          <div style={{ fontSize:14, fontWeight:700, color:"#0b3d91", marginBottom:12 }}>Approvals by Classification</div>
           {Object.keys(data.approvalsByClassification || {}).length === 0 ? (
             <div style={{ color:"#aaa", textAlign:"center", padding:24 }}>No approvals in this period.</div>
           ) : (
@@ -116,7 +150,7 @@ export default function ActivityAnalytics({ user }) {
 
       {/* Uploads by Section */}
       <div style={{ background:"#fff", borderRadius:8, boxShadow:"0 1px 4px rgba(0,0,0,0.06)", padding:16, marginBottom:16 }}>
-        <div style={{ fontSize:14, fontWeight:700, color:"#0b3d91", marginBottom:12 }}>📤 Uploads by Section</div>
+        <div style={{ fontSize:14, fontWeight:700, color:"#0b3d91", marginBottom:12 }}>Uploads by Section</div>
         {Object.keys(data.uploadsBySection || {}).length === 0 ? (
           <div style={{ color:"#aaa", textAlign:"center", padding:24 }}>No uploads in this period.</div>
         ) : (
@@ -136,7 +170,7 @@ export default function ActivityAnalytics({ user }) {
 
       {/* Activity Timeline */}
       <div style={{ background:"#fff", borderRadius:8, boxShadow:"0 1px 4px rgba(0,0,0,0.06)", padding:16, marginBottom:16 }}>
-        <div style={{ fontSize:14, fontWeight:700, color:"#0b3d91", marginBottom:12 }}>📅 Activity Timeline</div>
+        <div style={{ fontSize:14, fontWeight:700, color:"#0b3d91", marginBottom:12 }}>Activity Timeline</div>
         {Object.keys(data.byDate || {}).length === 0 ? (
           <div style={{ color:"#aaa", textAlign:"center", padding:24 }}>No activity in this period.</div>
         ) : (

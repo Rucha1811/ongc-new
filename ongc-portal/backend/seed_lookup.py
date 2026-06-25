@@ -33,9 +33,28 @@ DATA = {
     "file_type": ["PDF","DOCX","XLSX","PPT","TXT","DAT","CSV","ZIP"],
     "data_type": ["Seismic 2D/3D/3C/4D","LFPS","VSP","Any Other Data"],
     "classification": ["General / Available for All","Sensitive / Internal Use","Confidential","Highly Confidential / Restricted"],
+    "project_name": [
+        "North Gandhar–Jambusar GP-03 3D",
+        "Bechraji (OALP-VIII) 3D",
+        "Kutch 2D Reconnaissance",
+        "Long-Offset 2D GP-36",
+        "VSP Survey Valod",
+        "Navigation Survey GP-06",
+        "LFPS Rajasthan",
+    ],
+    "survey_type": ["3D Seismic","2D Seismic","VSP","Navigation Survey","LFPS","Any Other"],
+    "contractor_name": ["M/s Geophysical Services India","M/s Explorer Solutions Ltd","M/s Spectra Geophysics","M/s Seismic Works Pvt Ltd","M/s Subsurface Imaging Corp"],
+    "area_name": ["Ankleshwar","Ahmedabad","Mehsana","Rajasthan","Camay-Balol","Kutch","Gandhar–Jambusar"],
+    "project_period": ["FY 2025-26","FY 2024-25","FY 2023-24","Q1 2025-26","Q2 2025-26","Q3 2025-26","Q4 2025-26"],
+    "project_category": ["3D Seismic Acquisition","2D Seismic Acquisition","VSP Survey","Navigation Survey","LFPS","Data Processing","Reconnaissance"],
+    "survey_grid_params": ["300m x 300m","400m x 400m","500m x 500m","Custom Grid","Orthogonal","Brick Pattern"],
+    "acquisition_geometry": ["Slip Sweep","Flip Flop","Simultaneous Source","Conventional","Single Source / Single Cable"],
+    "instrument_parameters": ["Sampling 2ms/4ms","Record Length 6s","Record Length 8s","Record Length 10s","Filter 3-90Hz","Filter 3-180Hz"],
+    "sensor_type": ["Geophone 10Hz","Accelerometer","MEMS","Hydrophone","Dual Sensor"],
+    "source_parameters": ["Vibroseis 4x2","Vibroseis 3x2","Dynamite 5kg","Dynamite 10kg","Vibroseis 2x2","Airgun"],
 }
 
-conn = psycopg2.connect("host=localhost port=5432 dbname=ongc_db user=ongc_user password=ongc_pass")
+conn = psycopg2.connect("host=localhost port=5433 dbname=ongc_db user=ongc_user password=ongc_pass")
 cur = conn.cursor()
 
 cur.execute("DELETE FROM lookups")
