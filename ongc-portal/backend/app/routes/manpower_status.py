@@ -48,7 +48,7 @@ async def list_items(
 
 @router.post("/create", status_code=201)
 async def create_item(
-        category: str = Form(None),
+        category: str = Form(...),
     total: int = Form(...),
     deployed: int = Form(...),
     on_leave: int = Form(...),

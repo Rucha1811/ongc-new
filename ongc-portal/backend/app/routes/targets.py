@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, Form, UploadFile, File
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import select, or_
 from sqlalchemy.orm import selectinload
 from app.database import get_db
 from app.models.base import Target, TargetAccomplishment, User
@@ -30,9 +30,31 @@ def _normalize_header(col, syn_map):
 
 @router.get("/")
 async def list_targets(db: AsyncSession = Depends(get_db), user: User = Depends(get_current_user)):
-    result = await db.execute(
-        select(Target).options(selectinload(Target.accomplishments), selectinload(Target.creator)).order_by(Target.created_at.desc())
-    )
+    role_name = user.role.name if user.role else "viewer"
+    q = select(Target).options(selectinload(Target.accomplishments), selectinload(Target.creator)).order_by(Target.created_at.desc())
+    if role_name != "admin":
+        if role_name == "ops_manager":
+            mu = await db.execute(select(User.id).where(User.ops_manager_id == user.id))
+            managed_ids = {user.id} | {row[0] for row in mu}
+            ms = set()
+            if user.area:
+                for s in user.area.split("/"):
+                    ms.add(s.strip())
+            if user.section:
+                ms.add(user.section)
+            if ms:
+                q = q.where(or_(Target.section.in_(ms), Target.created_by.in_(managed_ids)))
+            else:
+                q = q.where(Target.created_by.in_(managed_ids))
+        else:
+            ms = set()
+            if user.area:
+                for s in user.area.split("/"):
+                    ms.add(s.strip())
+            if user.section:
+                ms.add(user.section)
+            q = q.where(or_(Target.section.in_(ms), Target.created_by == user.id))
+    result = await db.execute(q)
     targets = result.scalars().all()
     out = []
     for t in targets:
@@ -72,7 +94,7 @@ async def create_target(
     user: User = Depends(get_current_user),
 ):
     role_name = user.role.name if user.role else "viewer"
-    if role_name not in ("admin", "ops_manager"):
+    if role_name not in ("admin", "ops_manager", "data_creator"):
         raise HTTPException(status_code=403, detail="Only admins and ops managers can create targets")
     t = Target(
         title=title,
@@ -114,7 +136,7 @@ async def add_accomplishment(
 
 @router.delete("/{target_id}")
 async def delete_target(target_id: int, db: AsyncSession = Depends(get_db), user: User = Depends(get_current_user)):
-    if user.role.name not in ("admin", "ops_manager"):
+    if user.role.name not in ("admin", "ops_manager", "data_creator"):
         raise HTTPException(status_code=403, detail="Only admins and ops managers can delete targets")
     result = await db.execute(select(Target).where(Target.id == target_id))
     t = result.scalar_one_or_none()
@@ -132,7 +154,7 @@ async def target_excel_preview(
     user: User = Depends(get_current_user),
 ):
     role_name = user.role.name if user.role else "viewer"
-    if role_name not in ("admin", "ops_manager"):
+    if role_name not in ("admin", "ops_manager", "data_creator"):
         raise HTTPException(403, "Only admin/ops_manager can upload Excel")
     if not file.filename.endswith(".xlsx"):
         raise HTTPException(400, "Only .xlsx files are supported")
@@ -195,7 +217,7 @@ async def target_excel_import(
     user: User = Depends(get_current_user),
 ):
     role_name = user.role.name if user.role else "viewer"
-    if role_name not in ("admin", "ops_manager"):
+    if role_name not in ("admin", "ops_manager", "data_creator"):
         raise HTTPException(403, "Only admin/ops_manager can import Excel")
     mapping_dict = json.loads(mapping)
     contents = await file.read()

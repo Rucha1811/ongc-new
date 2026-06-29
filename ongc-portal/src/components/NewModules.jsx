@@ -616,97 +616,187 @@ export function ProgressReport({ user, onToast }) {
   );
 }
 
-// ─── 3. MANPOWER STATUS ───
+// ─── 3. MANPOWER STATUS (Employee Directory) ───
+function disciplineFromDesig(desig) {
+  if (!desig) return "Unknown";
+  const d = desig.toLowerCase();
+  if (d.includes("geophysicist") || d.includes("geophy")) return "Geophysics";
+  if (d.includes("survey")) return "Survey";
+  if (d.includes("electron") || d.includes("e&t")) return "Electronics";
+  if (d.includes("programm") || d.includes("sci. asst")) return "Programming / Sci. Asst";
+  if (d.includes("driver") || d.includes("winch")) return "Driver / Winch";
+  if (d.includes("mechanic") || d.includes("mechanical")) return "Mechanical";
+  if (d.includes("engineer")) return "Engineering";
+  if (d.includes("worker") || d.includes("office") || d.includes("attendant") || d.includes("mvd")) return "Support";
+  if (d.includes("assistant") || d.includes("deputy")) return "Assistant";
+  if (d.includes("manager") || d.includes("chief") || d.includes("head")) return "Management";
+  return "Other";
+}
+
+const LEVEL_ORDER = ["E7","E6","E5","E4","E3","E2","E1","E0","<E0","F3","F2","F1","A4","A3","A2","A1","W5","W4","W3","W2","W1","S1","S2","Other"];
+
+function sortLevel(a, b) {
+  const ai = LEVEL_ORDER.indexOf(a), bi = LEVEL_ORDER.indexOf(b);
+  return (ai === -1 ? 999 : ai) - (bi === -1 ? 999 : bi);
+}
+
 export function ManpowerStatus({ user, onToast }) {
   const [data, setData] = useState([]);
+  const [summary, setSummary] = useState(null);
+  const [sections, setSections] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [fv, setFv] = useState(0);
-  const [showUp, setShowUp] = useState(false);
-  const [showExcelModal, setShowExcelModal] = useState(false);
-  const [form, setForm] = useState({ category:"", total:"", deployed:"", on_leave:"", training:"" });
-  const [showForm, setShowForm] = useState(false);
-  const canEdit = user?.role === "admin" || user?.role === "ops_manager" || user?.role === "data_creator";
+  const [search, setSearch] = useState("");
+  const [filterSection, setFilterSection] = useState("");
+  const [filterLevel, setFilterLevel] = useState("");
+  const [expanded, setExpanded] = useState(null);
 
   const load = async () => {
     setLoading(true);
-    const d = await api.listManpowerStatus().catch(() => []);
-    setData(d || []);
+    const [emps, summ, secs] = await Promise.all([
+      api.stage2Manpower().catch(() => []),
+      api.stage2ManpowerSummary().catch(() => null),
+      api.stage2ManpowerSections().catch(() => []),
+    ]);
+    setData(emps || []);
+    setSummary(summ);
+    setSections(secs || []);
     setLoading(false);
   };
   useEffect(() => { load(); }, []);
 
-  const handleCreate = async () => {
-    if (!form.category) { onToast?.("Category required", "error"); return; }
-    const fd = new FormData();
-    Object.entries(form).forEach(([k,v]) => fd.append(k, v));
-    await api.createManpowerStatus(fd).catch(() => { onToast?.("Failed to create", "error"); return; });
-    onToast?.("Manpower record created", "success");
-    setForm({ category:"", total:"", deployed:"", on_leave:"", training:"" });
-    setShowForm(false);
-    load();
-  };
+  const filtered = data.filter(e => {
+    if (filterSection && e.section !== filterSection) return false;
+    if (filterLevel && e.level !== filterLevel) return false;
+    if (search) {
+      const q = search.toLowerCase();
+      if (!(e.name||"").toLowerCase().includes(q) &&
+          !(e.designation||"").toLowerCase().includes(q) &&
+          !(e.cpf_no||"").includes(q) &&
+          !(e.assignment||"").toLowerCase().includes(q)) return false;
+    }
+    return true;
+  });
 
-  const handleDelete = async (id) => {
-    if (!confirm("Delete this record?")) return;
-    await api.deleteManpowerStatus(id).catch(() => { onToast?.("Failed to delete", "error"); return; });
-    onToast?.("Deleted", "success");
-    load();
-  };
+  const allLevels = [...new Set(data.map(e => e.level).filter(Boolean))].sort(sortLevel);
 
   if (loading) return <div style={S.page}><div style={{textAlign:"center",padding:40,fontSize:14,color:"#888"}}>Loading manpower data...</div></div>;
 
   return (
     <div style={S.page}>
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
-        <div style={{...S.title,marginBottom:0}}>Manpower Status</div>
-        <div style={{display:"flex",gap:6}}>
-          {canEdit && <button style={{padding:"5px 12px",border:"none",borderRadius:4,background:"#0b3d91",color:"#fff",fontWeight:600,fontSize:12,cursor:"pointer"}} onClick={()=>setShowForm(!showForm)}>{showForm?"Close":"+ Add"}</button>}
-          {canEdit && <button style={{padding:"5px 12px",border:"none",borderRadius:4,background:"#0b3d91",color:"#fff",fontWeight:600,fontSize:12,cursor:"pointer"}} onClick={()=>setShowExcelModal(true)}>📥 Excel</button>}
-          <button style={{padding:"5px 12px",border:"none",borderRadius:4,background:showUp?"#e74c3c":"#0b3d91",color:"#fff",fontWeight:600,fontSize:12,cursor:"pointer"}} onClick={()=>setShowUp(!showUp)}>
-            {showUp ? "Close" : "Upload"}
-          </button>
-        </div>
+        <div style={{...S.title,marginBottom:0}}>Manpower Status — Geophysical Services</div>
       </div>
-      {showUp && <MiniUpload user={user} section="Manpower Status" fields={{category:"Category",season:"Period",remarks:"Remarks"}} onUpload={() => setFv(x=>x+1)} onToast={onToast} />}
-      {showForm && canEdit ? (
-        <div style={{background:"#fff",borderRadius:8,padding:"24px 32px",boxShadow:"0 1px 4px rgba(0,0,0,0.1)",maxWidth:800,margin:"0 auto"}}>
-          <div style={{...S.sectionTitle,fontSize:20}}>New Manpower Record</div>
-          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:12}}>
-            <div style={S.field}><label style={S.label}>Category *</label><input style={S.input} value={form.category} onChange={e=>setForm(p=>({...p,category:e.target.value}))} /></div>
-            <div style={S.field}><label style={S.label}>Total</label><input style={S.input} type="number" value={form.total} onChange={e=>setForm(p=>({...p,total:e.target.value}))} /></div>
-            <div style={S.field}><label style={S.label}>Deployed</label><input style={S.input} type="number" value={form.deployed} onChange={e=>setForm(p=>({...p,deployed:e.target.value}))} /></div>
-            <div style={S.field}><label style={S.label}>On Leave</label><input style={S.input} type="number" value={form.on_leave} onChange={e=>setForm(p=>({...p,on_leave:e.target.value}))} /></div>
-            <div style={S.field}><label style={S.label}>Training</label><input style={S.input} type="number" value={form.training} onChange={e=>setForm(p=>({...p,training:e.target.value}))} /></div>
+
+      {/* Summary Cards */}
+      {summary && (
+        <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:12,marginBottom:16}}>
+          <div style={{background:"#fff",borderRadius:8,padding:"14px 18px",boxShadow:"0 1px 4px rgba(0,0,0,0.08)",textAlign:"center"}}>
+            <div style={{fontSize:26,fontWeight:800,color:"#0b3d91"}}>{summary.total}</div>
+            <div style={{fontSize:11,color:"#888",fontWeight:600,marginTop:2}}>Total Employees</div>
           </div>
-          <div style={{display:"flex",gap:8,marginTop:16}}>
-            <button style={S.btnSm()} onClick={handleCreate}>Create</button>
-            <button style={{...S.btnSm("#888")}} onClick={()=>setShowForm(false)}>Cancel</button>
+          <div style={{background:"#fff",borderRadius:8,padding:"14px 18px",boxShadow:"0 1px 4px rgba(0,0,0,0.08)",textAlign:"center"}}>
+            <div style={{fontSize:26,fontWeight:800,color:"#2e7d32"}}>{sections.length}</div>
+            <div style={{fontSize:11,color:"#888",fontWeight:600,marginTop:2}}>Sections / Parties</div>
+          </div>
+          <div style={{background:"#fff",borderRadius:8,padding:"14px 18px",boxShadow:"0 1px 4px rgba(0,0,0,0.08)",textAlign:"center"}}>
+            <div style={{fontSize:26,fontWeight:800,color:"#E65100"}}>{allLevels.length}</div>
+            <div style={{fontSize:11,color:"#888",fontWeight:600,marginTop:2}}>Levels</div>
+          </div>
+          <div style={{background:"#fff",borderRadius:8,padding:"14px 18px",boxShadow:"0 1px 4px rgba(0,0,0,0.08)",textAlign:"center"}}>
+            <div style={{fontSize:26,fontWeight:800,color:"#6a1b9a"}}>{[...new Set(data.map(e => disciplineFromDesig(e.designation)))].length}</div>
+            <div style={{fontSize:11,color:"#888",fontWeight:600,marginTop:2}}>Disciplines</div>
           </div>
         </div>
-      ) : (
-        <>
-        <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12 }}>
-        {data.map((d,i)=>(
-          <div key={d.id} style={S.card}>
-            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
-              <div style={{fontSize:14,fontWeight:700,color:"#0b3d91"}}>{d.category}</div>
-              {canEdit && <button style={{fontSize:12,padding:"2px 8px",border:"none",borderRadius:3,background:"#ffebee",color:"#c62828",cursor:"pointer"}} onClick={()=>handleDelete(d.id)}>Del</button>}
-            </div>
-            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,fontSize:13}}>
-              <div><strong>Total:</strong> {d.total}</div>
-              <div><strong>Deployed:</strong> {d.deployed}</div>
-              <div><strong>On Leave:</strong> {d.on_leave}</div>
-              <div><strong>Training:</strong> {d.training}</div>
-            </div>
-            <div style={{marginTop:8,height:6,background:"#eee",borderRadius:3}}>
-              <div style={{width:`${(d.deployed/d.total)*100}%`,height:6,background:d.deployed/d.total>0.8?"#1B5E20":"#E65100",borderRadius:3}}/>
-            </div>
+      )}
+
+      {/* Section Wise + Level Wise side by side */}
+      {summary && (
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16,marginBottom:16}}>
+          <div style={S.card}>
+            <div style={{fontSize:13,fontWeight:700,color:"#0b3d91",marginBottom:10}}>Section Wise</div>
+            <table style={{width:"100%",borderCollapse:"collapse",fontSize:12}}>
+              <thead><tr style={{background:"#f0f4ff"}}>
+                <th style={{textAlign:"left",padding:"5px 8px",borderBottom:"2px solid #e0e4e8",fontWeight:600,color:"#555"}}>Section</th>
+                <th style={{textAlign:"right",padding:"5px 8px",borderBottom:"2px solid #e0e4e8",fontWeight:600,color:"#555"}}>Count</th>
+              </tr></thead>
+              <tbody>
+                {Object.entries(summary.by_section || {}).sort().map(([k,v]) => (
+                  <tr key={k}>
+                    <td style={{padding:"4px 8px",borderBottom:"1px solid #f0f0f0",fontWeight:600,color:"#0b3d91"}}>{k}</td>
+                    <td style={{padding:"4px 8px",borderBottom:"1px solid #f0f0f0",textAlign:"right",fontWeight:700}}>{v}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
-        ))}
+          <div style={S.card}>
+            <div style={{fontSize:13,fontWeight:700,color:"#0b3d91",marginBottom:10}}>Level Wise</div>
+            <table style={{width:"100%",borderCollapse:"collapse",fontSize:12}}>
+              <thead><tr style={{background:"#f0f4ff"}}>
+                <th style={{textAlign:"left",padding:"5px 8px",borderBottom:"2px solid #e0e4e8",fontWeight:600,color:"#555"}}>Level</th>
+                <th style={{textAlign:"right",padding:"5px 8px",borderBottom:"2px solid #e0e4e8",fontWeight:600,color:"#555"}}>Count</th>
+              </tr></thead>
+              <tbody>
+                {Object.entries(summary.by_level || {}).sort(([a],[b]) => sortLevel(a,b)).map(([k,v]) => (
+                  <tr key={k}>
+                    <td style={{padding:"4px 8px",borderBottom:"1px solid #f0f0f0",fontWeight:600}}>{k}</td>
+                    <td style={{padding:"4px 8px",borderBottom:"1px solid #f0f0f0",textAlign:"right",fontWeight:700}}>{v}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* Filters */}
+      <div style={S.card}>
+        <div style={{fontSize:13,fontWeight:700,color:"#0b3d91",marginBottom:10}}>Employee Directory ({filtered.length} of {data.length})</div>
+        <div style={{display:"flex",gap:10,flexWrap:"wrap",marginBottom:12}}>
+          <input style={{...S.input,flex:1,minWidth:200}} placeholder="Search by name, designation, CPF, assignment…" value={search} onChange={e => setSearch(e.target.value)} />
+          <select style={S.select} value={filterSection} onChange={e => setFilterSection(e.target.value)}>
+            <option value="">All Sections</option>
+            {sections.map(s => <option key={s} value={s}>{s}</option>)}
+          </select>
+          <select style={S.select} value={filterLevel} onChange={e => setFilterLevel(e.target.value)}>
+            <option value="">All Levels</option>
+            {allLevels.map(l => <option key={l} value={l}>{l}</option>)}
+          </select>
+        </div>
+
+        {filtered.length === 0 ? (
+          <div style={{textAlign:"center",padding:20,color:"#999",fontSize:13}}>No employees found.</div>
+        ) : (
+          <div style={{overflowX:"auto"}}>
+            <table style={{width:"100%",borderCollapse:"collapse",fontSize:12}}>
+              <thead>
+                <tr style={{background:"#f5f7fa"}}>
+                  <th style={{textAlign:"left",padding:"6px 10px",borderBottom:"2px solid #e0e4e8",fontWeight:600,color:"#555"}}>#</th>
+                  <th style={{textAlign:"left",padding:"6px 10px",borderBottom:"2px solid #e0e4e8",fontWeight:600,color:"#555"}}>CPF No</th>
+                  <th style={{textAlign:"left",padding:"6px 10px",borderBottom:"2px solid #e0e4e8",fontWeight:600,color:"#555"}}>Name</th>
+                  <th style={{textAlign:"left",padding:"6px 10px",borderBottom:"2px solid #e0e4e8",fontWeight:600,color:"#555"}}>Designation</th>
+                  <th style={{textAlign:"left",padding:"6px 10px",borderBottom:"2px solid #e0e4e8",fontWeight:600,color:"#555"}}>Section</th>
+                  <th style={{textAlign:"center",padding:"6px 10px",borderBottom:"2px solid #e0e4e8",fontWeight:600,color:"#555"}}>Level</th>
+                  <th style={{textAlign:"left",padding:"6px 10px",borderBottom:"2px solid #e0e4e8",fontWeight:600,color:"#555"}}>Assignment</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filtered.map((e, i) => (
+                  <tr key={e.id} style={{background:i%2===0?"#fff":"#f8f9fa",borderBottom:"1px solid #f0f4f8",cursor:"pointer"}} onClick={() => setExpanded(expanded === e.id ? null : e.id)}>
+                    <td style={{padding:"5px 10px",color:"#888"}}>{e.sl_no || i+1}</td>
+                    <td style={{padding:"5px 10px",fontWeight:500,color:"#333"}}>{e.cpf_no || "—"}</td>
+                    <td style={{padding:"5px 10px",fontWeight:600,color:"#0b3d91"}}>{e.name}</td>
+                    <td style={{padding:"5px 10px",color:"#555",fontSize:11}}>{e.designation ? <span style={{background:"#e8eaf6",color:"#283593",padding:"1px 5px",borderRadius:3}}>{e.designation}</span> : "—"}</td>
+                    <td style={{padding:"5px 10px"}}><span style={{background:"#e0f2f1",color:"#00695c",padding:"1px 6px",borderRadius:3,fontWeight:600}}>{e.section}</span></td>
+                    <td style={{padding:"5px 10px",textAlign:"center"}}><span style={{background:"#fce4ec",color:"#c62828",padding:"1px 6px",borderRadius:3,fontWeight:700}}>{e.level || "—"}</span></td>
+                    <td style={{padding:"5px 10px",color:"#555",fontSize:11}}>{e.assignment || "—"}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
-      <FileTableSection section="Manpower Status" version={fv} />
-      <ExcelUploadModal show={showExcelModal} onClose={()=>setShowExcelModal(false)} onToast={onToast} apiPreview={api.excelManpowerPreview} apiImport={api.excelManpowerImport} fields="manpower_status" onSuccess={()=>{load()}} />
-      </>)}
     </div>
   );
 }

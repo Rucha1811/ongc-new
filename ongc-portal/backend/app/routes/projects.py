@@ -87,7 +87,7 @@ async def list_projects(db: AsyncSession = Depends(get_db), user: User = Depends
         )
     projects = result.scalars().all()
 
-    if role_name not in ("admin", "ops_manager", "data_creator"):
+    if role_name not in ("admin", "ops_manager"):
         filtered = []
         for p in projects:
             match = False
@@ -313,7 +313,7 @@ async def upload_project_file(
     user: User = Depends(get_current_user),
 ):
     role_name = user.role.name if user.role else "viewer"
-    if role_name not in ("admin", "ops_manager", "data_creator"):
+    if role_name not in ("admin", "ops_manager"):
         raise HTTPException(status_code=403, detail="You do not have permission to upload files")
     result = await db.execute(select(Project).where(Project.id == project_id))
     p = result.scalar_one_or_none()

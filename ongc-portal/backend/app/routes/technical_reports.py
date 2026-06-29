@@ -1,5 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import or_
 from sqlalchemy.future import select
 from app.database import get_db
 from app.models.base import TechnicalReport, User
@@ -24,9 +25,17 @@ async def list_reports(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    role_name = current_user.role.name if current_user.role else "viewer"
     q = select(TechnicalReport).order_by(TechnicalReport.created_at.desc())
     if category:
         q = q.where(TechnicalReport.category == category)
+    if role_name != "admin":
+        if role_name == "ops_manager":
+            mu = await db.execute(select(User.id).where(User.ops_manager_id == current_user.id))
+            managed_ids = {current_user.id} | {row[0] for row in mu}
+            q = q.where(TechnicalReport.created_by.in_(managed_ids))
+        else:
+            q = q.where(TechnicalReport.created_by == current_user.id)
     result = await db.execute(q)
     items = result.scalars().all()
     return [
@@ -120,7 +129,7 @@ async def delete_report(
     current_user: User = Depends(get_current_user),
 ):
     role = current_user.role.name if current_user.role else ""
-    if role not in ("admin", "ops_manager"):
+    if role not in ("admin", "ops_manager", "data_creator"):
         raise HTTPException(status_code=403, detail="Not enough permissions")
     result = await db.execute(select(TechnicalReport).where(TechnicalReport.id == report_id))
     report = result.scalar_one_or_none()

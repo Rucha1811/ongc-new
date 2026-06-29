@@ -10,16 +10,15 @@ router = APIRouter()
 
 @router.get("/monthly")
 async def monthly_report(db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)):
-    # Example: count files uploaded per month for last 12 months
-    result = await db.execute(select(File))
-    files = result.scalars().all()
+    from app.routes.dashboard import _get_scope_files
+    all_files = await _get_scope_files(db, current_user)
     now = datetime.utcnow()
     months = [(now.year, now.month - i) for i in range(12)]
     month_counts = {}
     for y, m in months:
         key = f"{y}-{m:02d}"
         month_counts[key] = 0
-    for f in files:
+    for f in all_files:
         if f.upload_date:
             key = f"{f.upload_date.year}-{f.upload_date.month:02d}"
             if key in month_counts:

@@ -408,3 +408,102 @@ class AWPItem(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
     creator = relationship("User", foreign_keys=[created_by])
+
+
+class Request(Base):
+    __tablename__ = "requests"
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    title = Column(String(200), nullable=False)
+    description = Column(Text)
+    target_type = Column(String(50), default="general")
+    status = Column(String(20), default="pending")
+    ops_manager_id = Column(Integer, ForeignKey("users.id"))
+    reviewed_by_ops = Column(Integer, ForeignKey("users.id"))
+    reviewed_by_admin = Column(Integer, ForeignKey("users.id"))
+    ops_comment = Column(Text)
+    admin_comment = Column(Text)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+    creator = relationship("User", foreign_keys=[user_id])
+    ops_reviewer = relationship("User", foreign_keys=[reviewed_by_ops])
+    admin_reviewer = relationship("User", foreign_keys=[reviewed_by_admin])
+
+
+class KnowledgeItem(Base):
+    __tablename__ = "knowledge_items"
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    title = Column(String(200), nullable=False)
+    description = Column(Text)
+    file_path = Column(String(500))
+    file_name = Column(String(255))
+    category = Column(String(100))
+    status = Column(String(20), default="pending")
+    reviewed_by_ops = Column(Integer, ForeignKey("users.id"))
+    reviewed_by_admin = Column(Integer, ForeignKey("users.id"))
+    ops_comment = Column(Text)
+    admin_comment = Column(Text)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+    creator = relationship("User", foreign_keys=[user_id])
+    ops_reviewer = relationship("User", foreign_keys=[reviewed_by_ops])
+    admin_reviewer = relationship("User", foreign_keys=[reviewed_by_admin])
+
+
+class AcquisitionTarget(Base):
+    __tablename__ = "acquisition_targets"
+    id = Column(Integer, primary_key=True, index=True)
+    project_name = Column(String(255), nullable=False, index=True)
+    project_type = Column(String(50))
+    financial_year = Column(String(20), nullable=False)
+    type = Column(String(10), nullable=False)
+    basin = Column(String(100))
+
+    apr = Column(Float, default=0)
+    may = Column(Float, default=0)
+    jun = Column(Float, default=0)
+    jul = Column(Float, default=0)
+    aug = Column(Float, default=0)
+    sep = Column(Float, default=0)
+    oct = Column(Float, default=0)
+    nov = Column(Float, default=0)
+    dec = Column(Float, default=0)
+    jan = Column(Float, default=0)
+    feb = Column(Float, default=0)
+    mar = Column(Float, default=0)
+
+    apr_ach = Column(Float, nullable=True)
+    may_ach = Column(Float, nullable=True)
+    jun_ach = Column(Float, nullable=True)
+    jul_ach = Column(Float, nullable=True)
+    aug_ach = Column(Float, nullable=True)
+    sep_ach = Column(Float, nullable=True)
+    oct_ach = Column(Float, nullable=True)
+    nov_ach = Column(Float, nullable=True)
+    dec_ach = Column(Float, nullable=True)
+    jan_ach = Column(Float, nullable=True)
+    feb_ach = Column(Float, nullable=True)
+    mar_ach = Column(Float, nullable=True)
+
+    total = Column(Float, default=0)
+    total_ach = Column(Float, nullable=True)
+
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+
+
+class ManpowerEmployee(Base):
+    __tablename__ = "manpower_employees"
+    id = Column(Integer, primary_key=True, index=True)
+    section = Column(String(100), nullable=False, index=True)
+    basin = Column(String(100))
+    sl_no = Column(Integer)
+    cpf_no = Column(String(20))
+    name = Column(String(200))
+    designation = Column(String(200))
+    mobile = Column(String(20))
+    level = Column(String(20))
+    crc = Column(String(20))
+    assignment = Column(String(255))
+    created_at = Column(DateTime(timezone=True), server_default=func.now())

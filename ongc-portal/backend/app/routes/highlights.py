@@ -1,5 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import or_
 from sqlalchemy.future import select
 from app.database import get_db
 from app.models.base import Highlight, User
@@ -15,9 +16,22 @@ async def list_highlights(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    result = await db.execute(
-        select(Highlight).order_by(Highlight.created_at.desc())
-    )
+    role_name = current_user.role.name if current_user.role else "viewer"
+    q = select(Highlight).order_by(Highlight.created_at.desc())
+    if role_name != "admin":
+        if role_name == "ops_manager":
+            mu = await db.execute(select(User.id).where(User.ops_manager_id == current_user.id))
+            managed_ids = {current_user.id} | {row[0] for row in mu}
+            ms = set()
+            if current_user.area: ms.add(current_user.area)
+            if current_user.section: ms.add(current_user.section)
+            if ms:
+                q = q.where(or_(Highlight.created_by.in_(managed_ids)))
+            else:
+                q = q.where(Highlight.created_by.in_(managed_ids))
+        else:
+            q = q.where(Highlight.created_by == current_user.id)
+    result = await db.execute(q)
     items = result.scalars().all()
     return [
         {
@@ -43,7 +57,7 @@ async def create_highlight(
     current_user: User = Depends(get_current_user),
 ):
     role = current_user.role.name if current_user.role else ""
-    if role not in ("admin", "ops_manager"):
+    if role not in ("admin", "ops_manager", "data_creator"):
         raise HTTPException(status_code=403, detail="Not enough permissions")
     if not title or not description:
         raise HTTPException(status_code=400, detail="Title and description required")
@@ -79,7 +93,7 @@ async def update_highlight(
     current_user: User = Depends(get_current_user),
 ):
     role = current_user.role.name if current_user.role else ""
-    if role not in ("admin", "ops_manager"):
+    if role not in ("admin", "ops_manager", "data_creator"):
         raise HTTPException(status_code=403, detail="Not enough permissions")
     result = await db.execute(select(Highlight).where(Highlight.id == highlight_id))
     hl = result.scalar_one_or_none()
@@ -105,7 +119,7 @@ async def delete_highlight(
     current_user: User = Depends(get_current_user),
 ):
     role = current_user.role.name if current_user.role else ""
-    if role not in ("admin", "ops_manager"):
+    if role not in ("admin", "ops_manager", "data_creator"):
         raise HTTPException(status_code=403, detail="Not enough permissions")
     result = await db.execute(select(Highlight).where(Highlight.id == highlight_id))
     hl = result.scalar_one_or_none()
@@ -139,7 +153,7 @@ async def highlight_excel_preview(
     user: User = Depends(get_current_user),
 ):
     role_name = user.role.name if user.role else "viewer"
-    if role_name not in ("admin", "ops_manager"):
+    if role_name not in ("admin", "ops_manager", "data_creator"):
         raise HTTPException(403, "Only admin/ops_manager can upload Excel")
     if not file.filename.endswith(".xlsx"):
         raise HTTPException(400, "Only .xlsx files are supported")
@@ -202,7 +216,7 @@ async def highlight_excel_import(
     user: User = Depends(get_current_user),
 ):
     role_name = user.role.name if user.role else "viewer"
-    if role_name not in ("admin", "ops_manager"):
+    if role_name not in ("admin", "ops_manager", "data_creator"):
         raise HTTPException(403, "Only admin/ops_manager can import Excel")
     mapping_dict = json.loads(mapping)
     contents = await file.read()

@@ -3,7 +3,23 @@ import { api, setToken, getToken } from "./api";
 import ActivityAnalytics from "./components/ActivityAnalytics";
 import ProjectCreation from "./components/ProjectCreation";
 import AnalyticalDashboard from "./components/AnalyticalDashboard";
-import { KPITargetsAWP, ProgressReport, ManpowerStatus, ContractStatus, FundManagement, Operations, DataProcessing, RegionalLab, ReportingAppraisals, PendingIssues, Highlights, TechnicalReports, SharePointTemp, HSE, AWP } from "./components/NewModules";
+import SmartDashboard from "./components/SmartDashboard";
+import { KPITargetsAWP } from "./components/modules/KPITargetsAWP";
+import { ProgressReport } from "./components/modules/ProgressReport";
+import { ManpowerStatus } from "./components/modules/ManpowerStatus";
+import { ContractStatus } from "./components/modules/ContractStatus";
+import { FundManagement } from "./components/modules/FundManagement";
+import { Operations } from "./components/modules/Operations";
+import { DataProcessing } from "./components/modules/DataProcessing";
+import { RegionalLab } from "./components/modules/RegionalLab";
+import { ReportingAppraisals } from "./components/modules/ReportingAppraisals";
+import { PendingIssues } from "./components/modules/PendingIssues";
+import { Highlights } from "./components/modules/Highlights";
+import { TechnicalReports } from "./components/modules/TechnicalReports";
+import { SharePointTemp } from "./components/modules/SharePointTemp";
+import { AWP } from "./components/modules/AWP";
+import { Requests } from "./components/modules/Requests";
+import { ShareKnowledge } from "./components/modules/ShareKnowledge";
 import ReportBuilder from "./components/ReportBuilder";
 
 
@@ -21,7 +37,6 @@ const SUBMENU_CONFIG = {
   "Operations": { key:"ops_tabs", defaults:["Base Office","Contracts","HSE","GP-03","GP-06"] },
   "Data Processing": { key:"dp_tabs", defaults:["PG-I","PG-II"] },
   "Regional Electronics Lab": { key:"rel_tabs", defaults:["Gr-I","Gr-II"] },
-  "Reporting / Appraisals": { key:"report_tabs", defaults:["Fortnight","Monthly","Quarterly","Half-Yearly","DO Report","Consolidated Financial"] },
 };
 function getSubmenuTabs(label) {
   const c = SUBMENU_CONFIG[label];
@@ -39,29 +54,33 @@ const MENU = [
   { label:"Dashboard", page:"Dashboard", roles:["admin","ops_manager","data_creator","viewer"], levels:[0,2,3,4] },
   { label:"KPI / Targets / AWP", page:"kpi-awp", roles:["admin","ops_manager"], levels:[2,3] },
   { label:"Projects (Inhouse/Outsourced)", page:"projects", roles:["admin","ops_manager"], levels:[2,3] },
-  { label:"Progress Report", page:"progress-report", roles:["admin","ops_manager","data_creator","viewer"], levels:[2,3,4] },
   { label:"Manpower Status", page:"manpower-status", roles:["admin","ops_manager","data_creator","viewer"], levels:[2,3,4] },
   { label:"Contract / Tendering Status", page:"contract-status", roles:["admin","ops_manager","data_creator","viewer"], levels:[2,3,4] },
   { label:"Fund Management", page:"fund-management", roles:["admin","ops_manager","data_creator","viewer"], levels:[2,3,4] },
   { label:"Operations", submenu:getSubmenuTabs("Operations"), roles:["admin","ops_manager"], levels:[2,3] },
   { label:"Data Processing (RCC)", submenu:getSubmenuTabs("Data Processing"), roles:["admin","ops_manager","data_creator","viewer"], levels:[2,3,4] },
   { label:"Regional Electronics Lab (REL)", submenu:getSubmenuTabs("Regional Electronics Lab"), roles:["admin","ops_manager","data_creator","viewer"], levels:[2,3,4] },
-  { label:"Reporting / Appraisals", submenu:getSubmenuTabs("Reporting / Appraisals"), roles:["admin","ops_manager","data_creator","viewer"], levels:[2,3,4] },
   { label:"Pending vs Resolved Issues", page:"pending-issues", roles:["admin","ops_manager","data_creator","viewer"], levels:[2,3,4] },
   { label:"Highlights", page:"highlights", roles:["admin","ops_manager"], levels:[2,3] },
-  { label:"Technical Reports", page:"tech-reports", roles:["admin","ops_manager"], levels:[2,3] },
   { label:"Share Point (Temporary File)", page:"sharepoint", roles:["admin","ops_manager"], levels:[2,3] },
   { label:"AWP / My Annual Work Plan", page:"awp", roles:["admin","ops_manager","data_creator","viewer"], levels:[2,3,4] },
-  { label:"HSE", page:"hse", roles:["admin","ops_manager","data_creator","viewer"], levels:[2,3,4] },
   { label:"Reports", submenu: [
-    "Overview",
-    { label:"File Distribution", children: ["By Section", "By Classification", "By Type", "By Block"] },
-    { label:"Performance", children: ["Goal vs Accomplishment", "Activity Analytics"] },
-  ], roles:["admin","ops_manager"], levels:[2,3] },
+    "Progress Report",
+    "Technical Report",
+    { label:"Currently Available Reports", children: [
+      "Monthly",
+      "Quarterly",
+      "Half-Yearly",
+      "Fortnight",
+      "DO Report",
+      "Consolidated Financial",
+    ]},
+  ], roles:["admin","ops_manager","data_creator","viewer"], levels:[2,3,4] },
   { label:"Report Builder", page:"report-builder", roles:["admin","ops_manager"], levels:[2,3] },
   { label:"Activity Analytics", page:"activity-analytics", roles:["admin","ops_manager","data_creator","viewer"], levels:[0,2,3,4] },
   { label:"Users", page:"users", roles:["admin"], levels:[2] },
-  { label:"Access Permissions", page:"access-permissions", roles:["admin"], levels:[2] },
+         { label:"Access Permissions", page:"access-permissions", roles:["admin"], levels:[2] },
+         { label:"Requests", page:"requests", roles:["admin","ops_manager","data_creator","viewer"], levels:[0,2,3,4] },
   { label:"User Settings", page:"settings", roles:["admin","ops_manager"], levels:[2,3] },
   { label:"Log Out", action:"logout", roles:["admin","ops_manager","data_creator","viewer"], levels:[0,2,3,4] },
 ];
@@ -1215,13 +1234,12 @@ function AccessPermissions({ onToast }) {
                     {classifs.map(c => {
                       const granted = hasPermission(u.id, c);
                       return (
-                        <td key={c} style={{ ...S.td, textAlign:"center", cursor:"pointer" }}
-                          onClick={() => handleToggle(u.id, c, granted)}>
-                          <span style={{ fontSize:22, color: granted ? classColor[c] : "#ccc", transition:"color 0.2s" }}
-                            onMouseEnter={e => { if (!granted) e.target.style.color = "#0b3d91"; }}
-                            onMouseLeave={e => { if (!granted) e.target.style.color = "#ccc"; }}>
-                            {granted ? "ON" : ""}
-                          </span>
+                        <td key={c} style={{ ...S.td, textAlign:"center" }}>
+                          <input type="checkbox"
+                            checked={granted}
+                            onChange={() => handleToggle(u.id, c, granted)}
+                            style={{ width:18, height:18, cursor:"pointer", accentColor: classColor[c] || "#0b3d91" }}
+                          />
                         </td>
                       );
                     })}
@@ -1669,7 +1687,7 @@ export default function App() {
   const handleLogin = (u, token) => { setToken(token); setUser(u); sessionStorage.setItem("auth_user", JSON.stringify(u)); setPage("Dashboard"); };
   const handleLogout = () => { setToken(null); setUser(null); sessionStorage.removeItem("auth_user"); sessionStorage.removeItem("auth_token"); setPage("Dashboard"); };
 
-  const renderDashboard = () => user.role === "data_creator" ? <CreatorDashboard key={refresh} user={user} /> : <AnalyticalDashboard key={refresh} user={user} onToast={showToast} />;
+  const renderDashboard = () => <SmartDashboard key={refresh} user={user} onToast={showToast} />;
 
   const canAccess = (pageName) => {
     for (const item of MENU) {
@@ -1709,17 +1727,18 @@ export default function App() {
       // New modules
       case "kpi-awp": return <KPITargetsAWP user={user} onToast={showToast} />;
       case "projects": return <ProjectCreation user={user} onToast={showToast} />;
-      case "progress-report": return canAccess("progress-report") ? <ProgressReport user={user} onToast={showToast} /> : renderDashboard();
-      case "manpower-status": return canAccess("manpower-status") ? <ManpowerStatus user={user} onToast={showToast} /> : renderDashboard();
-      case "contract-status": return canAccess("contract-status") ? <ContractStatus user={user} onToast={showToast} /> : renderDashboard();
-      case "fund-management": return canAccess("fund-management") ? <FundManagement user={user} onToast={showToast} /> : renderDashboard();
-      case "pending-issues": return canAccess("pending-issues") ? <PendingIssues user={user} onToast={showToast} /> : renderDashboard();
-      case "highlights": return canAccess("highlights") ? <Highlights user={user} onToast={showToast} /> : renderDashboard();
-      case "tech-reports": return canAccess("tech-reports") ? <TechnicalReports user={user} onToast={showToast} /> : renderDashboard();
-      case "sharepoint": return canAccess("sharepoint") ? <SharePointTemp user={user} onToast={showToast} /> : renderDashboard();
-      case "awp": return canAccess("awp") ? <AWP user={user} onToast={showToast} /> : renderDashboard();
-      case "hse": return canAccess("hse") ? <HSE user={user} onToast={showToast} /> : renderDashboard();
+      case "progress-report": return <ProgressReport user={user} onToast={showToast} />;
+      case "manpower-status": return <ManpowerStatus user={user} onToast={showToast} />;
+      case "contract-status": return <ContractStatus user={user} onToast={showToast} />;
+      case "fund-management": return <FundManagement user={user} onToast={showToast} />;
+      case "pending-issues": return <PendingIssues user={user} onToast={showToast} />;
+      case "highlights": return <Highlights user={user} onToast={showToast} />;
+      case "tech-reports": return <TechnicalReports user={user} onToast={showToast} />;
+      case "sharepoint": return <SharePointTemp user={user} onToast={showToast} />;
+      case "awp": return <AWP user={user} onToast={showToast} />;
       case "report-builder": return <ReportBuilder user={user} onToast={showToast} />;
+      case "requests": return <Requests user={user} onToast={showToast} />;
+      case "share-knowledge": return <ShareKnowledge user={user} onToast={showToast} />;
 
       default: {
         for (const item of MENU) {
@@ -1731,14 +1750,17 @@ export default function App() {
                   if (item.label === "Operations") return <Operations key={child} initialTab={child} user={user} onToast={showToast} />;
                   if (item.label === "Data Processing (RCC)") return <DataProcessing key={child} initialTab={child} user={user} onToast={showToast} />;
                   if (item.label === "Regional Electronics Lab (REL)") return <RegionalLab key={child} initialTab={child} user={user} onToast={showToast} />;
-                  if (item.label === "Reporting / Appraisals") return <ReportingAppraisals key={child} initialTab={child} user={user} onToast={showToast} />;
-                  if (item.label === "Reports") return <Reports key={child} section={child} user={user} />;
+                  if (item.label === "Reports") {
+                    if (child === "Progress Report") return <ProgressReport user={user} onToast={showToast} />;
+                    if (child === "Technical Report") return <TechnicalReports user={user} onToast={showToast} />;
+                    if (child.label === "Currently Available Reports") return <ReportingAppraisals initialTab="Monthly" user={user} onToast={showToast} />;
+                  }
                 }
               } else if (child.children) {
                 for (const gc of child.children) {
                   const key = `${item.label}-${child.label}-${gc.replace(/\s+/g,"-")}`;
                   if (page === key) {
-                    if (item.label === "Reports") return <Reports key={`${child.label}-${gc}`} section={child.label} subsection={gc} user={user} />;
+                    if (item.label === "Reports" && child.label === "Currently Available Reports") return <ReportingAppraisals key={gc} initialTab={gc} user={user} onToast={showToast} />;
                   }
                 }
               }
@@ -1783,7 +1805,8 @@ export default function App() {
               onClose={() => setShowNotif(false)}
             />}
           </div>
-          <button style={{ background:"rgba(255,255,255,0.2)", border:"none", color:"#fff", padding:"6px 14px", borderRadius:4, cursor:"pointer", fontSize:12, fontWeight:600 }} onClick={handleLogout}>Logout</button>
+           <button style={{ background:"rgba(255,255,255,0.15)", border:"none", color:"#fff", padding:"6px 14px", borderRadius:4, cursor:"pointer", fontSize:12, fontWeight:600 }} onClick={() => { setPage("share-knowledge"); setCurrentPageLabel("Share Knowledge"); }}>Share Knowledge</button>
+            <button style={{ background:"rgba(255,255,255,0.2)", border:"none", color:"#fff", padding:"6px 14px", borderRadius:4, cursor:"pointer", fontSize:12, fontWeight:600 }} onClick={() => { setPage("requests"); setCurrentPageLabel("Requests"); }}>Requests</button>
         </div>
       </div>
 

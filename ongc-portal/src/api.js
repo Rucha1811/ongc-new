@@ -701,4 +701,102 @@ export const api = {
     if (_token) headers["Authorization"] = `Bearer ${_token}`;
     return fetch(`${BASE}/api/awp-items/upload-excel/import`, { method: "POST", headers, body: formData }).then(async (r) => { if (!r.ok) { const d = await r.json(); throw new Error(d.detail || "Import failed"); } return r.json(); });
   },
+
+  // ─── REQUESTS ───
+  listRequests: () => request("GET", "/api/requests/"),
+  createRequest: (title, description, target_type) => {
+    const params = new URLSearchParams();
+    params.set("title", title);
+    if (description) params.set("description", description);
+    params.set("target_type", target_type || "general");
+    const headers = { "Content-Type": "application/x-www-form-urlencoded" };
+    if (_token) headers["Authorization"] = `Bearer ${_token}`;
+    return fetch(`${BASE}/api/requests/create`, { method: "POST", headers, body: params }).then(async (r) => { if (!r.ok) { const d = await r.json(); throw new Error(d.detail || "Failed"); } return r.json(); });
+  },
+  approveOps: (requestId, comment) => {
+    const params = new URLSearchParams();
+    if (comment) params.set("comment", comment);
+    const headers = { "Content-Type": "application/x-www-form-urlencoded" };
+    if (_token) headers["Authorization"] = `Bearer ${_token}`;
+    return fetch(`${BASE}/api/requests/${requestId}/approve-ops`, { method: "POST", headers, body: params }).then(async (r) => { if (!r.ok) { const d = await r.json(); throw new Error(d.detail || "Failed"); } return r.json(); });
+  },
+  approveAdmin: (requestId, comment) => {
+    const params = new URLSearchParams();
+    if (comment) params.set("comment", comment);
+    const headers = { "Content-Type": "application/x-www-form-urlencoded" };
+    if (_token) headers["Authorization"] = `Bearer ${_token}`;
+    return fetch(`${BASE}/api/requests/${requestId}/approve-admin`, { method: "POST", headers, body: params }).then(async (r) => { if (!r.ok) { const d = await r.json(); throw new Error(d.detail || "Failed"); } return r.json(); });
+  },
+  rejectRequest: (requestId, comment) => {
+    const params = new URLSearchParams();
+    params.set("comment", comment);
+    const headers = { "Content-Type": "application/x-www-form-urlencoded" };
+    if (_token) headers["Authorization"] = `Bearer ${_token}`;
+    return fetch(`${BASE}/api/requests/${requestId}/reject`, { method: "POST", headers, body: params }).then(async (r) => { if (!r.ok) { const d = await r.json(); throw new Error(d.detail || "Failed"); } return r.json(); });
+  },
+
+  // ─── KNOWLEDGE BASE ───
+  listKnowledge: () => request("GET", "/api/knowledge/"),
+  createKnowledge: (formData) => {
+    const headers = {};
+    if (_token) headers["Authorization"] = `Bearer ${_token}`;
+    return fetch(`${BASE}/api/knowledge/create`, { method: "POST", headers, body: formData }).then(async (r) => { if (!r.ok) { const d = await r.json(); throw new Error(d.detail || "Failed"); } return r.json(); });
+  },
+  approveKnowledgeOps: (itemId, comment) => {
+    const params = new URLSearchParams();
+    if (comment) params.set("comment", comment);
+    const headers = { "Content-Type": "application/x-www-form-urlencoded" };
+    if (_token) headers["Authorization"] = `Bearer ${_token}`;
+    return fetch(`${BASE}/api/knowledge/${itemId}/approve-ops`, { method: "POST", headers, body: params }).then(async (r) => { if (!r.ok) { const d = await r.json(); throw new Error(d.detail || "Failed"); } return r.json(); });
+  },
+  approveKnowledgeAdmin: (itemId, comment) => {
+    const params = new URLSearchParams();
+    if (comment) params.set("comment", comment);
+    const headers = { "Content-Type": "application/x-www-form-urlencoded" };
+    if (_token) headers["Authorization"] = `Bearer ${_token}`;
+    return fetch(`${BASE}/api/knowledge/${itemId}/approve-admin`, { method: "POST", headers, body: params }).then(async (r) => { if (!r.ok) { const d = await r.json(); throw new Error(d.detail || "Failed"); } return r.json(); });
+  },
+  rejectKnowledge: (itemId, comment) => {
+    const params = new URLSearchParams();
+    params.set("comment", comment);
+    const headers = { "Content-Type": "application/x-www-form-urlencoded" };
+    if (_token) headers["Authorization"] = `Bearer ${_token}`;
+    return fetch(`${BASE}/api/knowledge/${itemId}/reject`, { method: "POST", headers, body: params }).then(async (r) => { if (!r.ok) { const d = await r.json(); throw new Error(d.detail || "Failed"); } return r.json(); });
+  },
+
+  // ─── STAGE-II DATAVISION ───
+  stage2Monthly: (fy, project_name) => {
+    const p = [];
+    if (fy) p.push(`financial_year=${encodeURIComponent(fy)}`);
+    if (project_name) p.push(`project_name=${encodeURIComponent(project_name)}`);
+    return request("GET", `/api/stage2/acquisition-targets/analytics/monthly${p.length ? `?${p.join("&")}` : ""}`);
+  },
+  stage2Yearly: (fy, project_name) => {
+    const p = [];
+    if (fy) p.push(`financial_year=${encodeURIComponent(fy)}`);
+    if (project_name) p.push(`project_name=${encodeURIComponent(project_name)}`);
+    return request("GET", `/api/stage2/acquisition-targets/analytics/yearly${p.length ? `?${p.join("&")}` : ""}`);
+  },
+  stage2Targets: (fy, type, project_name) => {
+    const p = [];
+    if (fy) p.push(`financial_year=${encodeURIComponent(fy)}`);
+    if (type) p.push(`type=${encodeURIComponent(type)}`);
+    if (project_name) p.push(`project_name=${encodeURIComponent(project_name)}`);
+    return request("GET", `/api/stage2/acquisition-targets${p.length ? `?${p.join("&")}` : ""}`);
+  },
+  stage2CreateTarget: (data) => request("POST", "/api/stage2/acquisition-targets", data),
+  stage2UpdateTarget: (id, data) => request("PUT", `/api/stage2/acquisition-targets/${id}`, data),
+  stage2DeleteTarget: (id) => request("DELETE", `/api/stage2/acquisition-targets/${id}`),
+  stage2Export: (project_name, financial_year, type) => {
+    const p = [];
+    if (project_name) p.push(`project_name=${encodeURIComponent(project_name)}`);
+    if (financial_year) p.push(`financial_year=${encodeURIComponent(financial_year)}`);
+    if (type) p.push(`type=${encodeURIComponent(type)}`);
+    return fetch(`${BASE}/api/stage2/acquisition-targets/export${p.length ? `?${p.join("&")}` : ""}`, {
+      headers: _token ? { Authorization: `Bearer ${_token}` } : {},
+    });
+  },
+  stage2ManpowerSummary: () => request("GET", "/api/stage2/manpower-employees/summary"),
+  stage2Manpower: (section) => request("GET", section ? `/api/stage2/manpower-employees/?section=${encodeURIComponent(section)}` : "/api/stage2/manpower-employees/"),
+  stage2ManpowerSections: () => request("GET", "/api/stage2/manpower-employees/sections"),
 };

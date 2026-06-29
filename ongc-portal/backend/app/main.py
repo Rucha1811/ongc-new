@@ -2,7 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from app.config import settings
-from app.routes import auth, users, files, approvals, dashboard, reports, notifications, database, permissions, lookup as lookup_routes, ai as ai_routes, activity, projects, targets, highlights, technical_reports, report_builder, progress_reports, manpower_status, contract_status, fund_management, data_processing, regional_lab, reporting_appraisals, pending_issues, hse_incidents, awp_items
+from app.routes import auth, users, files, approvals, dashboard, reports, notifications, database, permissions, lookup as lookup_routes, ai as ai_routes, activity, projects, targets, highlights, technical_reports, report_builder, progress_reports, manpower_status, contract_status, fund_management, data_processing, regional_lab, reporting_appraisals, pending_issues, hse_incidents, awp_items, requests, knowledge, acquisition_targets
 from app.models.base import Base
 from app.database import engine
 from app.ai.vector_store import vector_store
@@ -78,3 +78,6 @@ app.include_router(pending_issues.router, prefix="/api/pending-issues", tags=["p
 app.include_router(hse_incidents.router, prefix="/api/hse-incidents", tags=["hse-incidents"])
 app.include_router(awp_items.router, prefix="/api/awp-items", tags=["awp-items"])
 
+app.include_router(requests.router, prefix="/api/requests", tags=["Requests"])
+app.include_router(knowledge.router, prefix="/api/knowledge", tags=["Knowledge"])
+app.include_router(acquisition_targets.router, prefix="/api/stage2", tags=["Stage-II DataVision"])
